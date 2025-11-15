@@ -1,5 +1,5 @@
 {
-  "name": "clear",
+  "name": "beam",
   "scripts": {
     "dev": "bun run --hot src/index.ts",
     "lint": "gts lint",
