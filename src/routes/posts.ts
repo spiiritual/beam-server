@@ -1,8 +1,10 @@
-import {Hono} from 'hono';
-import {zValidator} from '@hono/zod-validator';
-import {auth} from '../auth';
-import {db} from '../db';
-import {sql} from 'kysely';
+import { Hono } from 'hono';
+import { zValidator } from '@hono/zod-validator';
+import { auth } from '../auth';
+import { db } from '../db';
+import { sql } from 'kysely';
+import { OpenAI } from 'openai';
+import { pipeline, env } from '@huggingface/transformers';
 import * as z from 'zod';
 
 const app = new Hono<{
@@ -78,7 +80,22 @@ app
       } else {
         const user = c.get('user')!;
         try {
-          const query = await db
+          const openai = new OpenAI();
+          const moderation = await openai.moderations.create({
+            model: "omni-moderation-latest",
+            input: validated.content,
+          })
+
+          if (moderation.results[0].flagged) {
+            c.status(503);
+            return c.text("Sorry, but your text failed the moderation check.")
+          }
+
+          const sentimentAnalysisPipeline = await pipeline("text-classification", "cardiffnlp/twitter-roberta-base-sentiment-latest")
+          const output = await sentimentAnalysisPipeline(validated.content)
+
+          if ('label' in output[0] && output[0].label == "Positive") {
+            const query = await db
             .insertInto('posts')
             .values({
               content: validated.content,
@@ -87,6 +104,7 @@ app
               longitude: validated.longitude,
             })
             .execute();
+          }
         } catch (error) {
           c.status(503);
           return c.text('Unsuccessful');
